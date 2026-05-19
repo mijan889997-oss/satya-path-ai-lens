@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
     <style>
-        /* স্ক্যানিং এনিমেশনের জন্য কাস্টম স্টাইল */
         @keyframes scan {
             0% { top: 0%; }
             50% { top: 100%; }
@@ -26,7 +25,7 @@
         </h1>
         <p class="text-gray-400 mb-6">যেকোনো ছবি আপলোড করুন, এআই মুহূর্তেই টেক্সট এক্সট্রাক্ট ও ট্রান্সলেট করে দেবে!</p>
 
-        <div id="drop-zone" class="relative border-4 border-dashed border-gray-600 rounded-xl p-8 hover:border-cyan-400 transition cursor-pointer mb-6">
+        <div id="drop-zone" class="relative border-4 border-dashed border-gray-600 rounded-xl p-8 hover:border-cyan-400 transition cursor-pointer mb-6overflow-hidden">
             <div id="scanner" class="absolute left-0 w-full h-1 bg-cyan-400 scanner-line hidden"></div>
             
             <div id="upload-prompt">
@@ -59,11 +58,115 @@
     </div>
 
     <script>
-        // জাভাস্ক্রিপ্ট লজিক আমরা পরের ধাপে এখানে যুক্ত করব।
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
+        const previewImg = document.getElementById('preview-img');
+        const uploadPrompt = document.getElementById('upload-prompt');
+        const scanner = document.getElementById('scanner');
+        const progressContainer = document.getElementById('progress-container');
+        const progressText = document.getElementById('progress-text');
+        const progressBar = document.getElementById('progress-bar');
+        const extractedTextHtml = document.getElementById('extracted-text');
+        const translatedTextHtml = document.getElementById('translated-text');
 
+        // ক্লিক করলে ফাইল ওপেন হবে
         dropZone.addEventListener('click', () => fileInput.click());
+
+        // ফাইল সিলেক্ট হলে প্রসেস শুরু হবে
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                processImage(file);
+            }
+        });
+
+        // ড্র্যাগ এন্ড ড্রপ ফিচার
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-cyan-400');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-cyan-400');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-cyan-400');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                processImage(file);
+            }
+        });
+
+        // মূল এআই প্রসেসিং ফাংশন
+        function processImage(file) {
+            // প্রিভিউ দেখানো
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImg.src = e.target.result;
+                previewImg.classList.remove('hidden');
+                uploadPrompt.classList.add('hidden');
+                scanner.classList.remove('hidden'); // অ্যানিমেশন চালু
+                progressContainer.classList.remove('hidden');
+            }
+            reader.readAsDataURL(file);
+
+            // Tesseract AI দিয়ে ছবি থেকে লেখা পড়া
+            Tesseract.recognize(
+                file,
+                'eng', // শুধুমাত্র ইংরেজি অক্ষরের ছবি স্ক্যান করবে
+                {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const progress = Math.round(m.progress * 100);
+                            progressText.innerText = `এআই স্ক্যান করছে: ${progress}%`;
+                            progressBar.style.width = `${progress}%`;
+                        }
+                    }
+                }
+            ).then(({ data: { text } }) => {
+                // স্ক্যান শেষ
+                scanner.classList.add('hidden');
+                progressContainer.classList.add('hidden');
+                extractedTextHtml.value = text;
+
+                if(text.trim() === "") {
+                    extractedTextHtml.value = "ছবিতে কোনো ইংরেজি লেখা খুঁজে পাওয়া যায়নি!";
+                    return;
+                }
+
+                // ট্রান্সলেশন (ফ্রি ক্লাউড এপিআই দিয়ে অনুবাদ)
+                translateText(text);
+            }).catch(err => {
+                console.error(err);
+                scanner.classList.add('hidden');
+                progressContainer.classList.add('hidden');
+                alert("দুঃখিত, কোনো সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+            });
+        }
+
+        // ফ্রি এপিআই দিয়ে ইংরেজি থেকে বাংলা অনুবাদ করার ফাংশন
+        function translateText(text) {
+            translatedTextHtml.value = "অনুবাদ করা হচ্ছে...";
+            const apiUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=bn&dt=t&q=${encodeURIComponent(text)}`;
+
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    let translatedText = "";
+                    data[0].forEach(sentence => {
+                        if (sentence[0]) {
+                            translatedText += sentence[0];
+                        }
+                    });
+                    translatedTextHtml.value = translatedText;
+                })
+                .catch(err => {
+                    console.error(err);
+                    translatedTextHtml.value = "অনুবাদ করতে সমস্যা হয়েছে।";
+                });
+        }
     </script>
 </body>
 </html>
